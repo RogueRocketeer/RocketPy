@@ -233,7 +233,7 @@ class TankGeometry:
 
         References
         ----------
-        .. [1] `<https://en.wikipedia.org/wiki/Moment_(physics)#Examples/>`_
+        .. [#] `<https://en.wikipedia.org/wiki/Moment_(physics)#Examples/>`_
         """
         height = self.area.identity_function()
 
@@ -271,7 +271,7 @@ class TankGeometry:
 
         References
         ----------
-        .. [1] https://en.wikipedia.org/wiki/List_of_moments_of_inertia
+        .. [#] https://en.wikipedia.org/wiki/List_of_moments_of_inertia
         """
         height2 = self.radius.identity_function() ** 2
 

@@ -644,7 +644,7 @@ class SolidMotor(Motor):
 
         References
         ----------
-        .. [1] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         grain_mass = self.propellant_mass / self.grain_number
         grain_number = self.grain_number
@@ -682,7 +682,7 @@ class SolidMotor(Motor):
 
         References
         ----------
-        .. [1] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         return self.propellant_I_11
 
@@ -704,7 +704,7 @@ class SolidMotor(Motor):
 
         References
         ----------
-        .. [1] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         I_33 = (
             (1 / 2.0)
