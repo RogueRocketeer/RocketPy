@@ -501,9 +501,9 @@ class Motor(ABC):
         The e_1 direction is assumed to be the direction perpendicular to the
         motor body axis. Also, due to symmetry, I_11 = I_22.
 
-        References
-        ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        See Also
+        --------
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
 
         prop_I_11 = self.propellant_I_11
@@ -535,9 +535,9 @@ class Motor(ABC):
         motor body axis, and perpendicular to e_1. Also, due to symmetry,
         I_22 = I_11.
 
-        References
-        ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        See Also
+        --------
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         # Due to symmetry, I_22 = I_11
         return self.I_11
@@ -559,7 +559,7 @@ class Motor(ABC):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         # Propellant inertia tensor 33 component wrt propellant center of mass
         propellant_I_33 = self.propellant_I_33
@@ -592,7 +592,7 @@ class Motor(ABC):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         # Propellant inertia tensor 12 component wrt propellant center of mass
         propellant_I_12 = self.propellant_I_12
@@ -689,7 +689,7 @@ class Motor(ABC):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
 
     @property
@@ -711,7 +711,7 @@ class Motor(ABC):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
 
     @property
@@ -733,7 +733,7 @@ class Motor(ABC):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
 
     @property
@@ -759,7 +759,7 @@ class Motor(ABC):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
 
     @property
@@ -1243,7 +1243,7 @@ class GenericMotor(Motor):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         return (
             self.propellant_mass
@@ -1269,7 +1269,7 @@ class GenericMotor(Motor):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         return self.propellant_I_11
 
@@ -1291,7 +1291,7 @@ class GenericMotor(Motor):
 
         References
         ----------
-        .. [#] https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+        https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
         """
         return self.propellant_mass * self.chamber_radius**2 / 2
 
