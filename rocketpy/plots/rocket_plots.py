@@ -170,7 +170,7 @@ class _RocketPlots:
             default values are used. Default values are:
 
             .. code-block:: python
-                
+
                 {
                     "background": "#EEEEEE",
                     "tail": "black",

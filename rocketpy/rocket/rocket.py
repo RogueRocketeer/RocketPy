@@ -1288,17 +1288,17 @@ class Rocket:
             can be one of the following:
 
             - A callable function that takes three arguments: \
-            
+
                 1. Freestream pressure in pascals.
                 2. Height in meters above ground level.
                 3. The state vector of the simulation, which is defined as: \
-                
+
                     .. code-block:: python
 
                         u = [x, y, z, vx, vy, vz, e0, e1, e2, e3, wx, wy, wz]
 
                 .. note::
-                    
+
                     The function should return ``True`` if the parachute \
                     ejection system should be triggered and ``False`` otherwise.
             - A float value, representing an absolute height in meters. In this \
@@ -1306,9 +1306,9 @@ class Rocket:
                 height above ground level.
             - The string "apogee" which triggers the parachute at apogee, i.e., \
                 when the rocket reaches its highest point and starts descending.
-            
+
             .. note::
-            
+
                 The function will be called according to the sampling rate specified.
         sampling_rate : float, optional
             Sampling rate in which the trigger function works. It is used to
