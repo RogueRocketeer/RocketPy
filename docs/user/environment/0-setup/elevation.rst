@@ -4,7 +4,7 @@ Elevation
 The elevation of the launch site of a rocket is particularly important for
 determining its interaction with the atmosphere and Earth's gravitational field.
 
-With previously known elevation
+Known elevation
 -------------------------------
 
 If the elevation, measured in meters above sea level, along with the latitude
