@@ -50,7 +50,7 @@ Now we set our topography
 Find the launch site elevation
 ------------------------------
 
-Once we defined the topographic profile, we can find the launch site elevation
+Once the topographic profile is defined, we can find the launch site elevation
 
 .. jupyter-execute::
 
