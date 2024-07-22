@@ -20,17 +20,11 @@ results when we are flying next to mountains or valleys
 Initialization
 --------------
 
-First of all, we import the Environment class: 
+Let us consider a fictional launch in Switzerland. First, we set the basic information about our Environment object
 
 .. jupyter-execute::
 
     from rocketpy import Environment
-
-For example, let's set an Environment consider a fictional launch at Switzerland.
-First we need to set the basic information about our Environment object
-
-.. jupyter-execute::
-
     env = Environment(latitude=46.90479, longitude=8.07575, datum="WGS84")
 
 .. note::
