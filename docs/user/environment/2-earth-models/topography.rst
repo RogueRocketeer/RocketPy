@@ -72,8 +72,8 @@ And finally set the elevation to the Environment object:
 Visualize information
 ---------------------
 
-Now we can see the elevation that we have set, as well as other important
-attributes of our Environment object. We do that by running the
+To check the elevation we have set, as well as other important
+attributes of our Environment object, we run the
 :meth:`rocketpy.Environment.info` method:
 
 .. jupyter-execute::
