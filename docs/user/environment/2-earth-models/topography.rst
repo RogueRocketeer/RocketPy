@@ -35,8 +35,8 @@ First we need to set the basic information about our Environment object
 
 .. note::
     
-    Notice that the datum argument is used only for the converting from geodesic \
-    (i.e. lat/lon) to UTM coordinate system.
+    The datum argument is used only for converting from geodesic \
+    (i.e. lat/lon) to the UTM coordinate system.
 
 Set the topographic profile
 ---------------------------
