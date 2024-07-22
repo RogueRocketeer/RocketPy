@@ -35,7 +35,7 @@ Let us consider a fictional launch in Switzerland. First, we set the basic infor
 Set the topographic profile
 ---------------------------
 
-Now we finally set our topography
+Now we set our topography
 
 .. jupyter-execute::
 
