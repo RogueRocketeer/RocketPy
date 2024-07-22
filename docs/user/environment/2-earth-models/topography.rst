@@ -14,8 +14,7 @@ as well as participation from the German and Italian space agencies.
     `NASA's Earth data Search <https://lpdaac.usgs.gov/products/nasadem_hgtv001/>`_.
 
 
-This is a first step forward stopping consider Earth as a constant plane better
-results when we are flying next to mountains or valleys
+Including the topography provides more accurate results when flying next to mountains or valleys.
 
 Initialization
 --------------
