@@ -1,3 +1,4 @@
+import logging
 import os
 from unittest.mock import patch
 
@@ -117,6 +118,19 @@ def test_fin_flutter_analysis(flight_calisto_custom_wind):
     assert np.isclose(safety_factor(np.inf), 61.669562809629035, atol=5e-3)
 
 
+def test_calculate_stall_wind_velocity_returns_value(flight_calisto_custom_wind):
+    """Regression: the stall wind velocity must be returned (it was previously
+    only logged at INFO level and the method returned None, losing the value).
+    The Flight method and the utilities function must agree."""
+    with pytest.warns(DeprecationWarning):
+        w_v = flight_calisto_custom_wind.calculate_stall_wind_velocity(5)
+    assert isinstance(w_v, float)
+    assert w_v > 0
+    assert utilities.calculate_stall_wind_velocity(
+        flight_calisto_custom_wind, 5
+    ) == pytest.approx(w_v)
+
+
 def test_fin_flutter_analysis_with_prints(flight_calisto_custom_wind):
     """Test fin_flutter_analysis with see_prints=True to cover print branch.
 
@@ -140,7 +154,7 @@ def test_fin_flutter_analysis_with_prints(flight_calisto_custom_wind):
 
 
 @patch("matplotlib.pyplot.show")
-def test_fin_flutter_analysis_with_graphs(mock_show, flight_calisto_custom_wind):  # pylint: disable=unused-argument
+def test_fin_flutter_analysis_with_graphs(mock_show, flight_calisto_custom_wind):
     """Test fin_flutter_analysis with see_graphs=True to cover plotting branch.
 
     Parameters
@@ -150,21 +164,22 @@ def test_fin_flutter_analysis_with_graphs(mock_show, flight_calisto_custom_wind)
     flight_calisto_custom_wind : Flight
         A Flight object with a rocket with fins.
     """
-    result = utilities.fin_flutter_analysis(
+    flutter_mach, safety_factor = utilities.fin_flutter_analysis(
         fin_thickness=2 / 1000,
         shear_modulus=10e9,
         flight=flight_calisto_custom_wind,
         see_prints=False,
-        see_graphs=True,  # True = returns None!
+        see_graphs=True,
         filename=None,
     )
 
-    assert result is None
+    assert isinstance(flutter_mach, Function)
+    assert isinstance(safety_factor, Function)
     mock_show.assert_called()
 
 
 @patch("matplotlib.pyplot.show")
-def test_fin_flutter_analysis_complete_output(mock_show, flight_calisto_custom_wind):  # pylint: disable=unused-argument
+def test_fin_flutter_analysis_complete_output(mock_show, flight_calisto_custom_wind):
     """Test fin_flutter_analysis with both prints and graphs enabled.
 
     Parameters
@@ -174,16 +189,19 @@ def test_fin_flutter_analysis_complete_output(mock_show, flight_calisto_custom_w
     flight_calisto_custom_wind : Flight
         A Flight object with a rocket with fins.
     """
-    result = utilities.fin_flutter_analysis(
+    flutter_mach, safety_factor = utilities.fin_flutter_analysis(
         fin_thickness=2 / 1000,
         shear_modulus=10e9,
         flight=flight_calisto_custom_wind,
         see_prints=True,
-        see_graphs=True,  # True = returns None!
+        see_graphs=True,
         filename=None,
     )
 
-    assert result is None
+    # The flutter Mach number and safety factor are always returned, regardless
+    # of see_prints/see_graphs, so the safety-critical results are never lost.
+    assert isinstance(flutter_mach, Function)
+    assert isinstance(safety_factor, Function)
     mock_show.assert_called()
 
 
@@ -199,7 +217,7 @@ def test_flutter_prints(flight_calisto_custom_wind):
     flutter_mach = Function("tests/fixtures/utilities/flutter_mach.txt")
     safety_factor = Function("tests/fixtures/utilities/flutter_safety_factor.txt")
     assert (
-        utilities._flutter_prints(  # pylint: disable=protected-access
+        utilities._flutter_prints(
             fin_thickness=2 / 1000,
             shear_modulus=10e9,
             surface_area=0.009899999999999999,
@@ -229,7 +247,7 @@ def test_flutter_plots(mock_show, flight_calisto_custom_wind):  # pylint: disabl
     flutter_mach = Function("tests/fixtures/utilities/flutter_mach.txt")
     safety_factor = Function("tests/fixtures/utilities/flutter_safety_factor.txt")
     assert (
-        utilities._flutter_plots(  # pylint: disable=protected-access
+        utilities._flutter_plots(
             flight_calisto_custom_wind, flutter_mach, safety_factor
         )
         is None
@@ -328,3 +346,114 @@ def test_load_from_rpy(mock_show):  # pylint: disable=unused-argument
     )
     assert loaded_flight.info() is None
     assert loaded_flight.all_info() is None
+
+
+def test_opening_shock_coefficient_default_is_1_5():
+    """Default opening_shock_coefficient must be 1.5."""
+    force_default = utilities.calculate_simplified_opening_shock_force(10.0, 1.225, 10)
+    force_1_5 = utilities.calculate_simplified_opening_shock_force(10.0, 1.225, 10, 1.5)
+    assert force_default == force_1_5
+
+
+def test_calculate_simplified_opening_shock_force_matches_formula():
+    """calculate_simplified_opening_shock_force must return
+    Cx * cd_s * 0.5 * rho * V^2."""
+    cd_s = 10.0
+    cx = 1.6
+    air_density = 1.225
+    velocity = 50.0
+
+    expected_force = cx * cd_s * 0.5 * air_density * velocity**2
+    assert utilities.calculate_simplified_opening_shock_force(
+        cd_s, air_density, velocity, cx
+    ) == pytest.approx(expected_force, rel=1e-9)
+
+
+def test_calculate_simplified_opening_shock_force_scales_with_velocity_squared():
+    """Doubling velocity must quadruple the opening shock force."""
+    force_v = utilities.calculate_simplified_opening_shock_force(10.0, 1.225, 40.0)
+    force_2v = utilities.calculate_simplified_opening_shock_force(10.0, 1.225, 80.0)
+    assert force_2v == pytest.approx(4 * force_v, rel=1e-9)
+
+
+def test_calculate_simplified_opening_shock_force_zero_velocity_is_zero():
+    """No dynamic pressure means no opening shock force."""
+    assert utilities.calculate_simplified_opening_shock_force(
+        10.0, 1.225, 0.0
+    ) == pytest.approx(0.0)
+
+
+# --- Logging (rocketpy.utilities.enable_logging) ------------------------------
+
+
+@pytest.fixture(autouse=True)
+def reset_rocketpy_logger():
+    """Reset the rocketpy logger to its original state after each test."""
+    logger = logging.getLogger("rocketpy")
+    original_level = logger.level
+    original_handlers = logger.handlers[:]
+    yield
+    logger.handlers = original_handlers
+    logger.setLevel(original_level)
+
+
+def test_enable_logging_adds_stream_handler():
+    """enable_logging() must attach a StreamHandler to the rocketpy logger."""
+    utilities.enable_logging(level="INFO")
+
+    logger = logging.getLogger("rocketpy")
+    stream_handlers = [
+        h for h in logger.handlers if isinstance(h, logging.StreamHandler)
+    ]
+    assert len(stream_handlers) >= 1
+
+
+def test_enable_logging_sets_correct_level():
+    """enable_logging() must set the requested level on the rocketpy logger."""
+    utilities.enable_logging(level="DEBUG")
+    assert logging.getLogger("rocketpy").level == logging.DEBUG
+
+    utilities.enable_logging(level="WARNING")
+    assert logging.getLogger("rocketpy").level == logging.WARNING
+
+
+def test_enable_logging_no_duplicate_handlers():
+    """Calling enable_logging() twice must not duplicate StreamHandlers."""
+    utilities.enable_logging(level="INFO")
+    utilities.enable_logging(level="INFO")
+
+    logger = logging.getLogger("rocketpy")
+    stream_handlers = [
+        h for h in logger.handlers if isinstance(h, logging.StreamHandler)
+    ]
+    assert len(stream_handlers) == 1
+
+
+def test_enable_logging_replaces_handler_on_level_change():
+    """Calling enable_logging() with a new level must replace the old handler."""
+    utilities.enable_logging(level="WARNING")
+    utilities.enable_logging(level="DEBUG")
+
+    logger = logging.getLogger("rocketpy")
+    stream_handlers = [
+        h for h in logger.handlers if isinstance(h, logging.StreamHandler)
+    ]
+    assert len(stream_handlers) == 1
+    assert logger.level == logging.DEBUG
+
+
+def test_enable_logging_invalid_level_raises():
+    """enable_logging() must raise ValueError for an unrecognised level string."""
+    with pytest.raises(ValueError, match="Invalid logging level"):
+        utilities.enable_logging(level="INVALID")
+
+
+def test_enable_logging_messages_are_captured(caplog):
+    """After enable_logging(), internal rocketpy log messages must be visible."""
+    utilities.enable_logging(level="DEBUG")
+
+    with caplog.at_level(logging.DEBUG, logger="rocketpy"):
+        logger = logging.getLogger("rocketpy.simulation.flight")
+        logger.info("test message from flight")
+
+    assert "test message from flight" in caplog.text

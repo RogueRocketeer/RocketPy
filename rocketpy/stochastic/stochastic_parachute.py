@@ -2,7 +2,22 @@
 
 from rocketpy.rocket import Parachute
 
-from .stochastic_model import StochasticModel
+from .stochastic_model import StochasticModel, _sampler_seed
+
+
+def _is_a_trigger(member):
+    """One of the three forms ``Parachute`` accepts, and no more.
+
+    ``(int, float)`` deliberately, matching ``Parachute``'s own check rather
+    than ``numbers.Real``: that would take ``numpy.int64``, which ``Parachute``
+    refuses, so widening here only moves the failure to create time. ``bool``
+    is excluded because it is an ``int``, and would arrive as a height of one.
+    """
+    if callable(member):
+        return True
+    if isinstance(member, str):
+        return member.lower() == "apogee"
+    return isinstance(member, (int, float)) and not isinstance(member, bool)
 
 
 class StochasticParachute(StochasticModel):
@@ -96,6 +111,7 @@ class StochasticParachute(StochasticModel):
         self.drag_coefficient = drag_coefficient
         self.height = height
         self.porosity = porosity
+        self._seed = None
 
         self._validate_trigger(trigger)
         self._validate_noise(noise)
@@ -113,17 +129,39 @@ class StochasticParachute(StochasticModel):
             porosity=porosity,
         )
 
-    def _validate_trigger(self, trigger):
-        """Validates the trigger input. If the trigger input argument is not
-        None, it must be:
-        - a list of callables, string "apogee" or ints/floats
-        - a tuple that will be further validated in the StochasticModel class
+    def _set_stochastic(self, seed=None):
+        """Reseed parameter samplers and remember the seed for pressure noise.
+
+        Parameters
+        ----------
+        seed : int, optional
+            Seed for the random number generator and the derived parachute
+            pressure-noise seed.
         """
-        if trigger is not None:
-            assert isinstance(trigger, list) and all(
-                isinstance(member, (str, int, float) or callable(member))
-                for member in trigger
-            ), "`trigger` must be a list of callables, string 'apogee' or ints/floats"
+        self._seed = seed
+        super()._set_stochastic(seed)
+
+    def _validate_trigger(self, trigger):
+        """Validates the trigger input. If not None, it must be a non-empty
+        list whose members are each a callable, the string "apogee", or a
+        height. One of those is chosen per simulation.
+        """
+        if trigger is None:
+            return
+
+        valid = (
+            isinstance(trigger, list)
+            and bool(trigger)
+            and all(_is_a_trigger(member) for member in trigger)
+        )
+        # Raised rather than asserted: `python -O` strips an assert, and this
+        # is the only thing standing between a bad trigger and a Parachute
+        # that either refuses it much later or reads True as a height of 1.
+        if not valid:
+            raise AssertionError(
+                "`trigger` must be a non-empty list whose members are "
+                "callables, the string 'apogee', or heights"
+            )
 
     def _validate_noise(self, noise):
         """Validates the noise input. If the noise input argument is not
@@ -131,12 +169,14 @@ class StochasticParachute(StochasticModel):
         (mean, standard deviation, time-correlation)
         """
         if noise is not None:
-            assert isinstance(noise, list) and all(
-                isinstance(member, tuple) for member in noise
-            ), (
-                "`noise` must be a list of tuples in the form of "
-                "(mean, standard deviation, time-correlation)"
-            )
+            if not (
+                isinstance(noise, list)
+                and all(isinstance(member, tuple) for member in noise)
+            ):
+                raise AssertionError(
+                    "`noise` must be a list of tuples in the form of "
+                    "(mean, standard deviation, time-correlation)"
+                )
 
     def create_object(self):
         """Creates and returns a Parachute object from the randomly generated
@@ -148,4 +188,11 @@ class StochasticParachute(StochasticModel):
             Parachute object with the randomly generated input arguments.
         """
         generated_dict = next(self.dict_generator())
+        # Tie pressure noise into the Monte Carlo seed tree when one is set.
+        # Key by parachute name so drogue and main on the same rocket do not
+        # share one noise stream.
+        if self._seed is not None:
+            generated_dict["seed"] = _sampler_seed(
+                self._seed, ("pressure_noise", generated_dict["name"])
+            )
         return Parachute(**generated_dict)

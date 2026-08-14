@@ -32,16 +32,89 @@ Attention: The newest changes should be on top -->
 
 ### Added
 
-- ENH: Auto Populate Changelog [#919](https://github.com/RocketPy-Team/RocketPy/pull/919)
-- ENH: Adaptive Monte Carlo via Convergence Criteria [#922](https://github.com/RocketPy-Team/RocketPy/pull/922)
-- TST: Add acceptance tests for 3DOF flight simulation based on Bella Lui rocket [#914](https://github.com/RocketPy-Team/RocketPy/pull/914)
+- ENH: StochasticFreeFormFins for Monte Carlo simulations [#1117](https://github.com/RocketPy-Team/RocketPy/pull/1117)
+- ENH: `StochasticFreeFormFins`, so free-form fin sets can be used in Monte Carlo simulations. The outline is randomized as a block, since a shape is only meaningful as a complete set of points: every coordinate is perturbed by its own draw, the fin root is held on the body line, and a list of candidate outlines can have a different number of points in each. [#953](https://github.com/RocketPy-Team/RocketPy/issues/953)
+- ENH: Support for Open Meteo API in the `Environment` class, adding the `open_meteo` and `open_meteo_ensemble` atmospheric models. Pressure-level forecasts, past forecasts (from 2021 onwards) and ensembles are read straight from a keyless JSON API, with no external files and no netCDF/OPeNDAP dependency. [#520](https://github.com/RocketPy-Team/RocketPy/issues/520) [#1119](https://github.com/RocketPy-Team/RocketPy/pull/1119)
+- ENH: Add simplified opening shock force estimation [#1092](https://github.com/RocketPy-Team/RocketPy/pull/1092)
+- ENH: Add Qodo PR-Agent workflow using Google Gemini [#1089](https://github.com/RocketPy-Team/RocketPy/pull/1089)
+- ENH: Support for Meteomatics API in the `Environment` class [#1079](https://github.com/RocketPy-Team/RocketPy/pull/1079)
+- ENH: update master with develop [#1081](https://github.com/RocketPy-Team/RocketPy/pull/1081)
 
 ### Changed
 
-- 
+- CI: make the Gemini PR reviewer actually review [#1140](https://github.com/RocketPy-Team/RocketPy/pull/1140)
+- MNT: declare dependency floors the package can actually run on [#1108](https://github.com/RocketPy-Team/RocketPy/pull/1108)
+- CI: build the docs for pull requests into develop as well [#1104](https://github.com/RocketPy-Team/RocketPy/pull/1104)
+- CI: make changelog automation LLM-based (Gemini) and race-safe [#1082](https://github.com/RocketPy-Team/RocketPy/pull/1082)
+- ENH: Resolve pressure_ISA discretization bounds TODO [#1056](https://github.com/RocketPy-Team/RocketPy/pull/1056)
 
 ### Fixed
 
+- BUG: Pick between the candidate values of a list input with the stochastic model's own seeded generator. `random.choice` was used, which draws from the interpreter-wide stream that `_set_stochastic` does not reseed, so a fixed seed did not reproduce the values chosen from a list, and Monte Carlo workers forked from one process walked a single shared stream instead of sampling independently. Fixed-seed baselines that vary a list input change. [#953](https://github.com/RocketPy-Team/RocketPy/issues/953)
+- BUG: Report the atmospheric model time period and ensemble member count for lower-case model types. `set_atmospheric_model` documents `type` as case-insensitive, but `Environment.info()` and `all_info()` compared against capitalised literals, so `type="ensemble"` printed no time period and no member count, and skipped the ensemble comparison plot. [#520](https://github.com/RocketPy-Team/RocketPy/issues/520)
+- BUG: Give each `CustomSampler` input its own deterministic stream, and seed samplers sharing one generator once as a group. Existing fixed-seed `CustomSampler` baselines change, and samplers built on the legacy `RandomState` must move to `default_rng` because seeds now carry the full 128 bits. [#1102](https://github.com/RocketPy-Team/RocketPy/pull/1102)
+- BUG: Accept the callable parachute triggers `StochasticParachute` documents, and reject the ones it cannot mean. An invalid string, an empty list or a boolean now fails during validation instead of reaching `Parachute` or becoming a one-metre height trigger. [#1103](https://github.com/RocketPy-Team/RocketPy/pull/1103)
+- BUG: Accept a deterministic aerodynamic surface in `StochasticRocket.add_nose`, `add_trapezoidal_fins`, `add_elliptical_fins` and `add_tail`. Each wrapped the surface with a `component=` keyword none of the stochastic classes accept, so passing anything other than an already-stochastic surface raised a `TypeError`. [#953](https://github.com/RocketPy-Team/RocketPy/issues/953)
+- BUG: rocket with a late-starting thrust curve never leaves the rail [#1085](https://github.com/RocketPy-Team/RocketPy/pull/1085)
+
+## [v1.13.0] - 2026-07-21
+
+### Added
+
+- ENH: BUG/MNT: pre-release v1.13.0 review fixes [#1074](https://github.com/RocketPy-Team/RocketPy/pull/1074)
+- ENH: `Function` vectorized speed-up and refactor [#1049](https://github.com/RocketPy-Team/RocketPy/pull/1049)
+- ENH: Interactive 3D Flight Trajectory and Attitude Animation (PyVista) [#1066](https://github.com/RocketPy-Team/RocketPy/pull/1066)
+- ENH: Add optional `max_time` to `StochasticFlight` and carry base-flight attributes into created objects [#1070](https://github.com/RocketPy-Team/RocketPy/pull/1070)
+- ENH: seed sensor measurement noise per instance [#1052](https://github.com/RocketPy-Team/RocketPy/pull/1052)
+- DEV: Claude Code ruff hooks (auto-format on edit + pre-push lint guard) [#1046](https://github.com/RocketPy-Team/RocketPy/pull/1046)
+- CI: create a CI for testing docs updates + solve different docs issues [#1045](https://github.com/RocketPy-Team/RocketPy/pull/1045)
+- MNT: final fixes before next release [#1044](https://github.com/RocketPy-Team/RocketPy/pull/1044)
+- ENH: Individual Fins: add `Fin`, `TrapezoidalFin`, `EllipticalFin`, and `FreeFormFin` classes for modeling asymmetric or individually-positioned fins [#818](https://github.com/RocketPy-Team/RocketPy/pull/818)
+- ENH: Add AIGFS and HRRR forecast models to the Environment class [#951](https://github.com/RocketPy-Team/RocketPy/pull/951)
+- ENH: Add RingClusterMotor for annular clustered motor modeling [#924](https://github.com/RocketPy-Team/RocketPy/pull/924)
+- ENH: Discrete and Continuous Controllers [#946](https://github.com/RocketPy-Team/RocketPy/pull/946)
+- ENH: Add custom exceptions and unstable rocket warning [#970](https://github.com/RocketPy-Team/RocketPy/pull/970)
+- ENH: Adopt built-in Python logging instead of print() calls (closes [#450](https://github.com/RocketPy-Team/RocketPy/issues/450)) [#973](https://github.com/RocketPy-Team/RocketPy/pull/973)
+- ENH: Pass acceleration (`u_dot`) data to parachute trigger functions [#911](https://github.com/RocketPy-Team/RocketPy/pull/911)
+- ENH: Monte Carlo Formatting Options [#947](https://github.com/RocketPy-Team/RocketPy/pull/947)
+- ENH: Adaptive Monte Carlo via Convergence Criteria [#922](https://github.com/RocketPy-Team/RocketPy/pull/922)
+- ENH: Auto-Detection of Pressure Conversion Factor [#966](https://github.com/RocketPy-Team/RocketPy/pull/966)
+- ENH: Introduce pressure unit conversion when using forecast/reanalysis/ensemble data [#955](https://github.com/RocketPy-Team/RocketPy/pull/955)
+- DOC: Add aerodynamic surfaces user guide [#1043](https://github.com/RocketPy-Team/RocketPy/pull/1043)
+- DOC: Add Valkyrie flight example (Bisky Team) [#967](https://github.com/RocketPy-Team/RocketPy/pull/967)
+- DOC: Configure AI instructions and update developer docs [#975](https://github.com/RocketPy-Team/RocketPy/pull/975)
+- ENH: Auto Populate Changelog [#919](https://github.com/RocketPy-Team/RocketPy/pull/919)
+- MNT: Sync develop's Renovate config with master (#1039) [#1040](https://github.com/RocketPy-Team/RocketPy/pull/1040)
+- MNT: Configure Renovate Bot targeting develop branch [#972](https://github.com/RocketPy-Team/RocketPy/pull/972)
+
+### Changed
+
+- REL: bumps up rocketpy version to 1.13.0 [#1048](https://github.com/RocketPy-Team/RocketPy/pull/1048)
+- MNT: Remove unused pylint disable statements [#1067](https://github.com/RocketPy-Team/RocketPy/pull/1067)
+- MNT: Discrete controllers are now called exactly once per time node (previously twice); results may change for stateful controllers and `observed_variables` no longer contains duplicated entries [#949](https://github.com/RocketPy-Team/RocketPy/pull/949)
+- MNT: Multi-dimensional linear `Function` objects now apply their extrapolation rule to points outside the data's convex hull (previously returned NaN) [#969](https://github.com/RocketPy-Team/RocketPy/pull/969)
+- MNT: Informational messages previously shown with `print()` now use Python logging and are silent by default; call `rocketpy.utilities.enable_logging()` to see them [#973](https://github.com/RocketPy-Team/RocketPy/pull/973)
+- ENH: Refactor flight.py latitude/longitude to use inverted_haversine [#1055](https://github.com/RocketPy-Team/RocketPy/pull/1055)
+- MNT: `Function` with `interpolation="akima"` now matches the canonical (SciPy) Akima spline; interpolated values differ slightly from previous releases [#1049](https://github.com/RocketPy-Team/RocketPy/pull/1049)
+- MNT: `Function.differentiate` on 1-D array Functions now returns the analytical derivative of the interpolation (previously central finite differences); values at knots and domain edges may change [#1049](https://github.com/RocketPy-Team/RocketPy/pull/1049)
+
+### Deprecated
+
+- MNT: Rename `radius` to `radius_function` in `CylindricalTank` and `SphericalTank`; old `radius=` keyword argument now raises `DeprecationWarning` [#957](https://github.com/RocketPy-Team/RocketPy/pull/957)
+
+### Removed
+
+- MNT: Remove redundant, unused per-level `wind_heading`/`wind_direction` functions from `EnvironmentAnalysis` pressure-level data (derivable from `wind_velocity_x`/`wind_velocity_y`) [#1041](https://github.com/RocketPy-Team/RocketPy/pull/1041)
+
+### Fixed
+
+- BUG: Environment not Encoding Necessary Parameters for Decode [#1059](https://github.com/RocketPy-Team/RocketPy/pull/1059)
+- BUG: fix individual fin (`TrapezoidalFin`, `EllipticalFin`, `FreeFormFin`) serialization crash when saving rockets/flights [#1048](https://github.com/RocketPy-Team/RocketPy/pull/1048)
+- BUG: support the new Wyoming sounding WSGI page format (legacy cgi-bin endpoint was discontinued by UWyo) [#1048](https://github.com/RocketPy-Team/RocketPy/pull/1048)
+- FIX: pre-release hardening — bug fixes across the unreleased features [#1047](https://github.com/RocketPy-Team/RocketPy/pull/1047)
+- BUG: Remove duplicate controller process; controllers were being invoked twice per time node [#949](https://github.com/RocketPy-Team/RocketPy/pull/949)
+- BUG: fix wind heading and direction wraparound interpolation [#974](https://github.com/RocketPy-Team/RocketPy/pull/974)
+- BUG: fix NaN in ND linear interpolation outside convex hull (closes [#926](https://github.com/RocketPy-Team/RocketPy/issues/926)) [#969](https://github.com/RocketPy-Team/RocketPy/pull/969)
 - BUG: Add wraparound logic for wind direction in environment plots [#939](https://github.com/RocketPy-Team/RocketPy/pull/939)
 
 ## [v1.12.1] - 2026-04-03
@@ -80,17 +153,16 @@ Attention: The newest changes should be on top -->
 
 ### Fixed
 
-- BUG: Restore `Rocket.power_off_drag` and `Rocket.power_on_drag` as `Function` objects while preserving raw inputs in `power_off_drag_input` and `power_on_drag_input` [#941](https://github.com/RocketPy-Team/RocketPy/pull/941)
-- BUG: Add explicit timeouts to ThrustCurve API requests [#935](https://github.com/RocketPy-Team/RocketPy/pull/935)
 - BUG: Fix hard-coded radius value for parachute added mass calculation [#889](https://github.com/RocketPy-Team/RocketPy/pull/889)
+- BUG: Fix incorrect Jacobian in `only_radial_burn` branch of `SolidMotor.evaluate_geometry` [#944](https://github.com/RocketPy-Team/RocketPy/pull/944)
+- ENH: Restore `power_off_drag`/`power_on_drag` as `Function` objects and preserve raw user input in `_input` attributes [#941](https://github.com/RocketPy-Team/RocketPy/pull/941)
+- ENH: Add explicit timeouts to ThrustCurve API requests [#940](https://github.com/RocketPy-Team/RocketPy/pull/940)
 - DOC: Fix documentation build [#908](https://github.com/RocketPy-Team/RocketPy/pull/908)
 - BUG: energy_data plot not working for 3 dof sims [[#906](https://github.com/RocketPy-Team/RocketPy/issues/906)]
 - BUG: Fix CSV column header spacing in FlightDataExporter [#864](https://github.com/RocketPy-Team/RocketPy/issues/864)
 - BUG: Fix parallel Monte Carlo simulation showing incorrect iteration count [#806](https://github.com/RocketPy-Team/RocketPy/pull/806)
 - BUG: Fix missing titles in roll parameter plots for fin sets [#934](https://github.com/RocketPy-Team/RocketPy/pull/934)
 - BUG: Duplicate _controllers in Flight.TimeNodes.merge() [#931](https://github.com/RocketPy-Team/RocketPy/pull/931)
-- BUG: Fix incorrect Jacobian in `only_radial_burn` branch of `SolidMotor.evaluate_geometry` [#935](https://github.com/RocketPy-Team/RocketPy/pull/935)
-- BUG: Add explicit timeouts to ThrustCurve API requests [#935](https://github.com/RocketPy-Team/RocketPy/pull/935)
 
 ## [v1.11.0] - 2025-11-01
 

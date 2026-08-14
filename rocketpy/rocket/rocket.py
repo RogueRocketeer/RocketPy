@@ -1,12 +1,19 @@
 import csv
 import inspect
+import logging
 import math
+import numbers
 import warnings
 from typing import Iterable
 
 import numpy as np
 
 from rocketpy.control.controller import _Controller
+from rocketpy.exceptions import (
+    InvalidInertiaError,
+    InvalidParameterError,
+    UnstableRocketWarning,
+)
 from rocketpy.mathutils.function import Function
 from rocketpy.mathutils.vector_matrix import Matrix, Vector
 from rocketpy.motors.empty_motor import EmptyMotor
@@ -20,6 +27,7 @@ from rocketpy.rocket.aero_surface import (
     RailButtons,
     Tail,
     TrapezoidalFins,
+    TubeFins,
 )
 from rocketpy.rocket.aero_surface.fins.elliptical_fin import EllipticalFin
 from rocketpy.rocket.aero_surface.fins.free_form_fin import FreeFormFin
@@ -33,6 +41,8 @@ from rocketpy.tools import (
     find_obj_from_hash,
     parallel_axis_theorem_from_com,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # pylint: disable=too-many-instance-attributes, too-many-public-methods, too-many-instance-attributes
@@ -311,6 +321,29 @@ class Rocket:
                     + '"tail_to_nose" and "nose_to_tail".'
                 )
 
+        # Validate inputs. Accept Python and NumPy numeric scalars for
+        # radius/mass, and any length-3 or length-6 sequence (tuple, list or
+        # numpy array) for inertia, matching the permissive behavior of earlier
+        # versions (numpy inputs are common when computing inertia tensors).
+        if not isinstance(radius, numbers.Real) or radius <= 0:
+            raise InvalidParameterError(
+                f"Rocket radius must be a positive number, got {radius!r}."
+            )
+        if not isinstance(mass, numbers.Real) or mass <= 0:
+            raise InvalidParameterError(
+                f"Rocket mass must be a positive number, got {mass!r}."
+            )
+        try:
+            inertia_length = len(inertia)
+        except TypeError:
+            inertia_length = None
+        if isinstance(inertia, str) or inertia_length not in (3, 6):
+            raise InvalidInertiaError(
+                "Inertia must be a length-3 (I_11, I_22, I_33) or length-6 "
+                "(I_11, I_22, I_33, I_12, I_13, I_23) sequence, "
+                f"got {inertia!r}."
+            )
+
         # Define rocket inertia attributes in SI units
         self.mass = mass
         inertia = (*inertia, 0, 0, 0) if len(inertia) == 3 else inertia
@@ -459,6 +492,11 @@ class Rocket:
         return self.aerodynamic_surfaces.get_by_type(Fins)
 
     @property
+    def tube_fins(self):
+        """A list containing all tube-fin sets currently added to the rocket."""
+        return self.aerodynamic_surfaces.get_by_type(TubeFins)
+
+    @property
     def tails(self):
         """A list with all the tails currently added to the rocket"""
         return self.aerodynamic_surfaces.get_by_type(Tail)
@@ -478,7 +516,7 @@ class Rocket:
         """
         # Make sure there is a motor associated with the rocket
         if self.motor is None:
-            print("Please associate this rocket with a motor!")
+            logger.warning("Please associate this rocket with a motor!")
             return False
 
         self.total_mass = self.mass + self.motor.total_mass
@@ -498,7 +536,7 @@ class Rocket:
         """
         # Make sure there is a motor associated with the rocket
         if self.motor is None:
-            print("Please associate this rocket with a motor!")
+            logger.warning("Please associate this rocket with a motor!")
             return False
 
         self.dry_mass = self.mass + self.motor.dry_mass
@@ -578,10 +616,9 @@ class Rocket:
         self.reduced_mass : Function
             Function of time expressing the reduced mass of the rocket.
         """
-        # TODO: add tests for reduced_mass values
         # Make sure there is a motor associated with the rocket
         if self.motor is None:
-            print("Please associate this rocket with a motor!")
+            logger.warning("Please associate this rocket with a motor!")
             return False
 
         # Get nicknames
@@ -735,6 +772,45 @@ class Rocket:
             lower=0, upper=self.motor.burn_out_time, samples=200
         )
         return self.static_margin
+
+    def warn_if_unstable(self):
+        """Warn if the rocket is aerodynamically unstable at motor ignition.
+
+        Emits an :class:`UnstableRocketWarning` when the static margin at
+        ``t=0`` is negative. This is meant to be checked once the rocket is
+        fully assembled (e.g. when a :class:`Flight` is created), not during
+        incremental construction, so that partially-built-but-ultimately-stable
+        rockets do not raise spurious warnings.
+
+        The check is skipped when ``GenericSurface`` instances are present:
+        their lift coefficient derivative is not accounted for in
+        ``evaluate_center_of_pressure``, so the computed static margin does not
+        reflect their contribution and cannot be trusted for this check.
+
+        Returns
+        -------
+        bool
+            ``True`` if a warning was emitted, ``False`` otherwise.
+        """
+        has_generic_surface = any(
+            isinstance(aero_surface, GenericSurface)
+            for aero_surface, _position in self.aerodynamic_surfaces
+        )
+        if has_generic_surface:
+            return False
+
+        initial_static_margin = self.static_margin.get_value_opt(0)
+        if initial_static_margin < 0:
+            warnings.warn(
+                f"The rocket has a negative static margin "
+                f"({initial_static_margin:.2f} cal) at motor ignition (t=0), "
+                "indicating an aerodynamically unstable configuration. Check the "
+                "placement of fins and nose cone relative to the center of mass.",
+                UnstableRocketWarning,
+                stacklevel=2,
+            )
+            return True
+        return False
 
     def evaluate_dry_inertias(self):
         """Calculates and returns the rocket's dry inertias relative to
@@ -1036,9 +1112,9 @@ class Rocket:
         if hasattr(self, "motor"):
             # pylint: disable=access-member-before-definition
             if not isinstance(self.motor, EmptyMotor):
-                print(
+                logger.warning(
                     "Only one motor per rocket is currently supported. "
-                    + "Overwriting previous motor."
+                    "Overwriting previous motor."
                 )
         self.motor = motor
         self.motor_position = position
@@ -1120,6 +1196,7 @@ class Rocket:
             For Fins type, position refers to the z-coordinate of the root
             chord leading-edge point closest to the nose cone, before any
             cant-angle offset is considered.
+            For TubeFins type, position refers to the leading edge of the tubes.
             For Tail type, position is relative to the point belonging to the
             tail which is highest in the rocket coordinate system.
             For RailButtons type, position is relative to the lower rail button.
@@ -1367,10 +1444,13 @@ class Rocket:
             Fin set object created.
         """
         if n <= 2:
-            raise ValueError(
-                "Number of fins must be greater than 2. "
-                "For 1 or 2 fins, create a FreeFormFin object "
-                "and add it to the rocket using the add_surfaces method."
+            warnings.warn(
+                "Fin sets with 2 or fewer fins assume a symmetric, evenly-spaced "
+                "configuration and may not accurately capture asymmetric forces. "
+                "For 1 or 2 fins, consider creating individual fin objects "
+                "(e.g. TrapezoidalFin) and adding them with add_surfaces.",
+                UserWarning,
+                stacklevel=2,
             )
 
         # Modify radius if not given, use rocket radius, otherwise use given.
@@ -1459,10 +1539,13 @@ class Rocket:
             Fin set object created.
         """
         if n <= 2:
-            raise ValueError(
-                "Number of fins must be greater than 2. "
-                "For 1 or 2 fins, create a FreeFormFin object "
-                "and add it to the rocket using the add_surfaces method."
+            warnings.warn(
+                "Fin sets with 2 or fewer fins assume a symmetric, evenly-spaced "
+                "configuration and may not accurately capture asymmetric forces. "
+                "For 1 or 2 fins, consider creating individual fin objects "
+                "(e.g. TrapezoidalFin) and adding them with add_surfaces.",
+                UserWarning,
+                stacklevel=2,
             )
 
         radius = radius if radius is not None else self.radius
@@ -1532,10 +1615,13 @@ class Rocket:
             Fin set object created.
         """
         if n <= 2:
-            raise ValueError(
-                "Number of fins must be greater than 2. "
-                "For 1 or 2 fins, create a FreeFormFin object "
-                "and add it to the rocket using the add_surfaces method."
+            warnings.warn(
+                "Fin sets with 2 or fewer fins assume a symmetric, evenly-spaced "
+                "configuration and may not accurately capture asymmetric forces. "
+                "For 1 or 2 fins, consider creating individual fin objects "
+                "(e.g. TrapezoidalFin) and adding them with add_surfaces.",
+                UserWarning,
+                stacklevel=2,
             )
 
         # Modify radius if not given, use rocket radius, otherwise use given.
@@ -1553,6 +1639,67 @@ class Rocket:
         # Add fin set to the list of aerodynamic surfaces
         self.add_surfaces(fin_set, position)
         return fin_set
+
+    def add_tube_fins(
+        self,
+        n,
+        length,
+        inner_radius,
+        outer_radius,
+        position,
+        radius=None,
+        name="Tube Fins",
+    ):
+        """Create and add a symmetric set of tube fins to the rocket.
+
+        This first-order model uses the Ribner ring-airfoil normal-force slope
+        and a fixed quarter-chord center of pressure. It is intended for Mach
+        numbers up to 0.5 and angles of attack up to 20 degrees.
+
+        Parameters
+        ----------
+        n : int
+            Number of tubes. Must be at least 3.
+        length : int, float
+            Tube length along the rocket axis, in meters.
+        inner_radius : int, float
+            Inner radius of each tube, in meters.
+        outer_radius : int, float
+            Outer radius of each tube, in meters. The current model requires
+            neighboring tubes to touch, so this must equal
+            ``radius * sin(pi / n) / (1 - sin(pi / n))``.
+        position : int, float
+            Axial position of the tube leading edges in the user-defined rocket
+            coordinate system.
+        radius : int, float, optional
+            Rocket-body radius where the tubes are mounted. If ``None``, the
+            rocket radius is used.
+        name : str, optional
+            Name of the tube-fin set. Default is ``"Tube Fins"``.
+
+        Returns
+        -------
+        TubeFins
+            Tube-fin set created and added to the rocket.
+
+        Notes
+        -----
+        Only uncanted, mutually tangent tubes are supported. Component drag,
+        roll, side-force, yaw, separated tubes, and overlapping tubes are not
+        included in this model. Tube-fin drag must be represented in the
+        rocket's power-on and power-off drag curves.
+        """
+        radius = self.radius if radius is None else radius
+        tube_fins = TubeFins(
+            n=n,
+            length=length,
+            inner_radius=inner_radius,
+            outer_radius=outer_radius,
+            rocket_radius=radius,
+            name=name,
+        )
+        self.add_surfaces(tube_fins, position)
+        return tube_fins
 
     def add_parachute(
         self,
@@ -1747,15 +1894,19 @@ class Rocket:
             This function is expected to take the following arguments, in order:
 
             1. `time` (float): The current simulation time in seconds.
-            2. `sampling_rate` (float): The rate at which the controller
-               function is called, measured in Hertz (Hz).
+            2. `sampling_rate` (float or None): The rate at which the controller
+               function is called, measured in Hertz (Hz). It is None for
+               continuous controllers (called every solver step), so any
+               `1 / sampling_rate` computation must guard against None.
             3. `state` (list): The state vector of the simulation, structured as
                `[x, y, z, vx, vy, vz, e0, e1, e2, e3, wx, wy, wz]`.
             4. `state_history` (list): A record of the rocket's state at each
-               step throughout the simulation. The state_history is organized as a
-               list of lists, with each sublist containing a state vector. The last
-               item in the list always corresponds to the previous state vector,
-               providing a chronological sequence of the rocket's evolving states.
+               step throughout the simulation. It is organized as a list of
+               lists, ordered oldest to newest, where each sublist is a
+               *time-prefixed* state row `[t, x, y, z, vx, vy, vz, e0, e1, e2,
+               e3, wx, wy, wz]` (the same layout as `Flight.solution`, one
+               leading `time` element ahead of the `state` layout in item 3).
+               The last item corresponds to the most recent recorded step.
             5. `observed_variables` (list): A list containing the variables that
                the controller function returns. The initial value in the first
                step of the simulation of this list is provided by the
@@ -2370,7 +2521,7 @@ class Rocket:
             "Function, or callable."
         )
 
-    def __load_rocket_drag_csv(self, file_path, coeff_name):  # pylint: disable=too-many-statements,import-outside-toplevel
+    def __load_rocket_drag_csv(self, file_path, coeff_name):  # pylint: disable=too-many-statements
         """Load Rocket drag CSV into a 7D Function.
 
         Supports either headerless two-column (mach, coefficient) tables or

@@ -1,5 +1,11 @@
+from . import utilities
 from .control import _Controller
 from .environment import Environment, EnvironmentAnalysis
+from .exceptions import (
+    InvalidInertiaError,
+    InvalidParameterError,
+    UnstableRocketWarning,
+)
 from .mathutils import (
     Function,
     PiecewiseFunction,
@@ -18,6 +24,7 @@ from .motors import (
     MassFlowRateBasedTank,
     Motor,
     PointMassMotor,
+    RingClusterMotor,
     SolidMotor,
     SphericalTank,
     Tank,
@@ -45,6 +52,7 @@ from .rocket import (
     Tail,
     TrapezoidalFin,
     TrapezoidalFins,
+    TubeFins,
 )
 from .sensitivity import SensitivityModel
 from .sensors import Accelerometer, Barometer, GnssReceiver, Gyroscope
@@ -55,6 +63,7 @@ from .stochastic import (
     StochasticEllipticalFins,
     StochasticEnvironment,
     StochasticFlight,
+    StochasticFreeFormFins,
     StochasticNoseCone,
     StochasticParachute,
     StochasticRocket,

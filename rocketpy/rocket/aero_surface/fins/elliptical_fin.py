@@ -160,6 +160,7 @@ class EllipticalFin(Fin):
         self.geometry = _EllipticalGeometry(self)
         self._update_geometry_chain()
         self.evaluate_shape()
+        self.evaluate_rotation_matrix()
 
         self.prints = _EllipticalFinPrints(self)
         self.plots = _EllipticalFinPlots(self)
@@ -175,9 +176,11 @@ class EllipticalFin(Fin):
         self.cpz = cpz
         self.cp = (self.cpx, self.cpy, self.cpz)
 
-    def to_dict(self, include_outputs=False):
-        data = super().to_dict(include_outputs=include_outputs)
-        data.update(self.geometry.get_data(include_outputs=include_outputs))
+    def to_dict(self, **kwargs):
+        data = super().to_dict(**kwargs)
+        data.update(
+            self.geometry.get_data(include_outputs=kwargs.get("include_outputs", False))
+        )
         return data
 
     @classmethod

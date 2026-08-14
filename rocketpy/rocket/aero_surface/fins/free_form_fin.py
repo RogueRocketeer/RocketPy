@@ -148,6 +148,7 @@ class FreeFormFin(Fin):
         self.geometry = _FreeFormGeometry(self, shape_points)
         self._update_geometry_chain()
         self.evaluate_shape()
+        self.evaluate_rotation_matrix()
 
         self.prints = _FreeFormFinPrints(self)
         self.plots = _FreeFormFinPlots(self)
@@ -172,9 +173,11 @@ class FreeFormFin(Fin):
     def shape_points(self):
         return self.geometry.shape_points
 
-    def to_dict(self, include_outputs=False):
-        data = super().to_dict(include_outputs=include_outputs)
-        data.update(self.geometry.get_data(include_outputs=include_outputs))
+    def to_dict(self, **kwargs):
+        data = super().to_dict(**kwargs)
+        data.update(
+            self.geometry.get_data(include_outputs=kwargs.get("include_outputs", False))
+        )
         return data
 
     @classmethod

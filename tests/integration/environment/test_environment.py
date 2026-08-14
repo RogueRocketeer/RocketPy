@@ -45,6 +45,21 @@ def test_era5_atmosphere(mock_show, example_spaceport_env):  # pylint: disable=u
         type="Reanalysis",
         file="data/weather/SpaceportAmerica_2018_ERA-5.nc",
         dictionary="ECMWF",
+        pressure_conversion_factor="hPa",
+    )
+    assert example_spaceport_env.all_info() is None
+
+
+@patch("matplotlib.pyplot.show")
+def test_era5_atmosphere_auto_detect_pressure(mock_show, example_spaceport_env):  # pylint: disable=unused-argument
+    """Tests the Reanalysis model with the ERA5 file using the default
+    pressure_conversion_factor=None (auto-detection).
+    """
+    example_spaceport_env.set_date((2018, 10, 15, 12))
+    example_spaceport_env.set_atmospheric_model(
+        type="Reanalysis",
+        file="data/weather/SpaceportAmerica_2018_ERA-5.nc",
+        dictionary="ECMWF",
     )
     assert example_spaceport_env.all_info() is None
 
@@ -180,6 +195,85 @@ def test_windy_atmosphere(example_euroc_env, model_name):
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "best_match",
+        "gfs_seamless",
+        "ecmwf_ifs025",
+        "icon_seamless",
+    ],
+)
+def test_open_meteo_atmosphere(example_euroc_env, model_name):
+    """Tests the Open-Meteo forecast model against the live API.
+
+    The tolerances are loose because the actual weather is unknown at test
+    time; the point is to check that the profiles are built and that the values
+    are physically plausible.
+
+    Parameters
+    ----------
+    example_euroc_env : rocketpy.Environment
+        Example environment object to be tested.
+    model_name : str
+        The Open-Meteo model to be passed to set_atmospheric_model() as the
+        "file" parameter.
+    """
+    example_euroc_env.set_atmospheric_model(type="open_meteo", file=model_name)
+
+    assert pytest.approx(100000.0, rel=0.1) == example_euroc_env.pressure(100)
+    assert 0 + 273 < example_euroc_env.temperature(100) < 40 + 273
+    assert abs(example_euroc_env.wind_velocity_x(100)) < 30.0
+    assert abs(example_euroc_env.wind_velocity_y(100)) < 30.0
+    # Pressure must fall monotonically with altitude.
+    assert example_euroc_env.pressure(5000) < example_euroc_env.pressure(1000)
+    # Air density at sea level is around 1.2 kg/m^3.
+    assert 0.9 < example_euroc_env.density(100) < 1.4
+
+
+@pytest.mark.slow
+def test_open_meteo_historical_atmosphere(example_euroc_env):
+    """Tests that a past launch date reaches Open-Meteo's historical archive.
+
+    This is the workflow that removes the need to download reanalysis files by
+    hand: setting a past date and reading the profile straight from the API.
+    """
+    example_euroc_env.set_date(datetime(2024, 1, 10, 12, tzinfo=timezone.utc))
+    example_euroc_env.set_atmospheric_model(type="open_meteo")
+
+    assert pytest.approx(100000.0, rel=0.1) == example_euroc_env.pressure(100)
+    assert 0 + 273 < example_euroc_env.temperature(100) < 40 + 273
+    # The returned window must bracket the requested launch date.
+    assert example_euroc_env.atmospheric_model_init_date <= datetime(2024, 1, 10, 12)
+    assert example_euroc_env.atmospheric_model_end_date >= datetime(2024, 1, 10, 12)
+
+
+@pytest.mark.slow
+@patch("matplotlib.pyplot.show")
+def test_open_meteo_ensemble_atmosphere(mock_show, example_euroc_env):  # pylint: disable=unused-argument
+    """Tests the Open-Meteo ensemble model against the live API.
+
+    Parameters
+    ----------
+    mock_show : mock
+        Mock object to replace matplotlib.pyplot.show() method.
+    example_euroc_env : rocketpy.Environment
+        Example environment object to be tested.
+    """
+    example_euroc_env.set_atmospheric_model(type="open_meteo_ensemble", file="gfs05")
+
+    # gfs05 publishes 30 perturbed members plus the control run.
+    assert example_euroc_env.num_ensemble_members == 31
+    assert pytest.approx(100000.0, rel=0.1) == example_euroc_env.pressure(100)
+
+    example_euroc_env.select_ensemble_member(10)
+    assert example_euroc_env.ensemble_member == 10
+    assert pytest.approx(100000.0, rel=0.1) == example_euroc_env.pressure(100)
+
+    assert example_euroc_env.all_info() is None
+
+
+@pytest.mark.slow
 @patch("matplotlib.pyplot.show")
 def test_gfs_atmosphere(mock_show, example_spaceport_env):  # pylint: disable=unused-argument
     """Tests the Forecast model with the GFS file. It does not test the values,
@@ -227,7 +321,7 @@ def test_hrrr_atmosphere(mock_show, example_spaceport_env):  # pylint: disable=u
     # Sometimes the HRRR latest-model can fail due to not having at least 24
     # hours in the future in the forecast, so we try with 12 hours in the future
     # only.
-    example_spaceport_env.set_date(datetime.now() + timedelta(hours=12))
+    example_spaceport_env.set_date(datetime.now(timezone.utc) + timedelta(hours=12))
     example_spaceport_env.set_atmospheric_model(type="Forecast", file="HRRR")
     assert example_spaceport_env.all_info() is None
 
@@ -293,21 +387,27 @@ def test_wyoming_sounding_atmosphere(mock_show, example_plain_env):  # pylint: d
 
     # TODO:: this should be added to the set_atmospheric_model() method as a
     #        "file" option, instead of receiving the URL as a string.
-    url = "http://weather.uwyo.edu/cgi-bin/sounding?region=samer&TYPE=TEXT%3ALIST&YEAR=2019&MONTH=02&FROM=0500&TO=0512&STNM=83779"
-    # give it at least 5 times to try to download the file
+    url = (
+        "https://weather.uwyo.edu/wsgi/sounding?"
+        "datetime=2019-02-05+00:00:00&id=83779&type=TEXT:LIST"
+    )
+    # give it at least 5 times to try to download the file, then skip instead
+    # of silently keeping the standard atmosphere and failing the assertions
     for i in range(5):
         try:
             example_plain_env.set_atmospheric_model(type="wyoming_sounding", file=url)
             break
         except Exception:  # pylint: disable=broad-except
             time.sleep(2**i)
+    else:
+        pytest.skip("Could not fetch Wyoming sounding data from weather.uwyo.edu")
     assert example_plain_env.all_info() is None
     assert abs(example_plain_env.pressure(0) - 93600.0) < 1e-8
     assert (
         abs(example_plain_env.barometric_height(example_plain_env.pressure(0)) - 722.0)
         < 1e-8
     )
-    assert abs(example_plain_env.wind_velocity_x(0) - -2.9005178894925043) < 1e-8
+    assert abs(example_plain_env.wind_velocity_x(0) - -2.9130471244363165) < 1e-8
     assert abs(example_plain_env.temperature(100) - 291.75) < 1e-8
 
 

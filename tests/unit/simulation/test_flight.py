@@ -1,6 +1,7 @@
 import json
 import os
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import matplotlib as plt
 import numpy as np
@@ -8,6 +9,7 @@ import pytest
 from scipy import optimize
 
 from rocketpy import Components, Flight, Function, Rocket
+from rocketpy.simulation import FlightDataExporter
 
 plt.rcParams.update({"figure.max_open_warning": 0})
 
@@ -81,6 +83,65 @@ def setup_rocket_with_given_static_margin(rocket, static_margin):
 
 
 # Tests
+
+
+def _make_impact_event_state():
+    flight = object.__new__(Flight)
+    flight.env = SimpleNamespace(elevation=0)
+    flight.solution = [
+        [10.0, 0, 0, 1, 0, 0, -1],
+        [11.0, 0, 0, -1, 0, 0, -1],
+    ]
+    flight.flight_phases = SimpleNamespace(
+        flush_after=MagicMock(), add_phase=MagicMock()
+    )
+
+    solver = SimpleNamespace(
+        step_size=1.0,
+        dense_output=lambda: lambda _: np.array([2, 3, 0, 4, 5, -6]),
+        status="running",
+    )
+    time_nodes = SimpleNamespace(flush_after=MagicMock(), add_node=MagicMock())
+    phase = SimpleNamespace(solver=solver, time_nodes=time_nodes)
+    return flight, phase
+
+
+@pytest.mark.parametrize(
+    "roots, match",
+    [
+        ([-1 + 0j, 2 + 0j], "No valid roots found"),
+        ([0.25 + 0j, 0.75 + 0j], "Multiple roots found"),
+    ],
+)
+def test_handle_impact_event_reports_invalid_root_counts(roots, match):
+    flight, phase = _make_impact_event_state()
+
+    with patch(
+        "rocketpy.simulation.flight.find_roots_cubic_function", return_value=roots
+    ):
+        with pytest.raises(ValueError, match=match):
+            flight._Flight__handle_impact_event(phase, phase_index=1, node_index=2)
+
+
+def test_handle_impact_event_uses_single_valid_root():
+    flight, phase = _make_impact_event_state()
+
+    with patch(
+        "rocketpy.simulation.flight.find_roots_cubic_function",
+        return_value=[0.5 + 0j],
+    ):
+        handled = flight._Flight__handle_impact_event(
+            phase, phase_index=1, node_index=2
+        )
+
+    assert handled is True
+    assert flight.t == flight.t_final == pytest.approx(10.5)
+    assert flight.impact_velocity == -6
+    assert phase.solver.status == "finished"
+    flight.flight_phases.flush_after.assert_called_once_with(1)
+    flight.flight_phases.add_phase.assert_called_once_with(10.5)
+    phase.time_nodes.flush_after.assert_called_once_with(2)
+    phase.time_nodes.add_node.assert_called_once_with(10.5, [], [], [])
 
 
 def test_get_solution_at_time(flight_calisto):
@@ -174,7 +235,9 @@ def test_export_sensor_data(flight_calisto_with_sensors):
     flight_calisto_with_sensors : Flight
         Pytest fixture for the flight of the calisto rocket with an ideal accelerometer and a gyroscope.
     """
-    flight_calisto_with_sensors.export_sensor_data("test_sensor_data.json")
+    FlightDataExporter(flight_calisto_with_sensors).export_sensor_data(
+        "test_sensor_data.json"
+    )
     # read the json and parse as dict
     filename = "test_sensor_data.json"
     with open(filename, "r") as f:

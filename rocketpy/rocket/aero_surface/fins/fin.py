@@ -189,11 +189,20 @@ class Fin(_BaseFin):
         self.evaluate_rotation_matrix()
 
     def evaluate_lift_coefficient(self):
-        """Calculates and returns the fin set's lift coefficient.
-        The lift coefficient is saved and returned. This function
-        also calculates and saves the lift coefficient derivative
-        for a single fin and the lift coefficient derivative for
-        a number of n fins corrected for Fin-Body interference.
+        """Calculates and returns the individual fin's lift coefficient.
+
+        Note
+        ----
+        An individual :class:`Fin` models a single physical fin, so its lift
+        curve slope is the single-fin value corrected only for fin-body
+        interference. It intentionally does NOT include the empirical
+        multiple-fin interference correction (``fin_num_correction``) applied by
+        the symmetric :class:`Fins` set, because that correction is defined for a
+        set of ``n`` identical, evenly spaced fins and has no meaning for an
+        individually positioned fin. Consequently, a set of ``n`` identical
+        ``Fin`` objects will not reproduce the exact aggregate lift slope of a
+        ``Fins(n=...)`` set (they differ by ``fin_num_correction(n) / n``). For
+        standard symmetric fin sets, prefer the plural ``*Fins`` classes.
 
         Returns
         -------
@@ -327,7 +336,7 @@ class Fin(_BaseFin):
         cp,
         omega,
         *args,
-    ):  # pylint: disable=arguments-differ
+    ):  # pylint: disable=arguments-differ,unused-argument
         """Computes the forces and moments acting on the aerodynamic surface.
 
         Parameters
@@ -372,17 +381,15 @@ class Fin(_BaseFin):
         # Apply roll interference factor, disregarding lift interference factor
         M3 *= self.roll_forcing_interference_factor / self.lift_interference_factor
 
-        # Roll damping
-        _, cld_omega, _ = self.roll_parameters
-        M3_damping = (
-            (1 / 2 * rho * stream_speed)
-            * self.reference_area
-            * (self.reference_length) ** 2
-            * cld_omega.get_value_opt(stream_mach)
-            * omega[2]  # omega3
-            / 2
-        )
-        M3 += M3_damping
+        # NOTE: roll damping is intentionally NOT added as a separate term here.
+        # Unlike the symmetric fin set (whose center of pressure lies on the
+        # roll axis), an individual fin has an off-axis center of pressure, so
+        # the roll-rate contribution ``w ^ cp`` is already injected by the Flight
+        # loop into the local stream velocity fed to this surface (see
+        # ``Flight`` ``comp_vb``). That contribution changes ``attack_angle`` and
+        # therefore already produces the roll-damping moment through the
+        # ``cp ^ R`` term above. Adding an explicit ``cld_omega`` damping term
+        # would double-count it.
         return R1, R2, R3, M1, M2, M3
 
     def _compute_leading_edge_position(self, position, _csys):
@@ -423,18 +430,30 @@ class Fin(_BaseFin):
         position += p
         return position
 
-    def to_dict(self, include_outputs=False):
+    def to_dict(self, **kwargs):
+        if self.airfoil:
+            if kwargs.get("discretize", False):
+                lower = -np.pi / 6 if self.airfoil[1] == "radians" else -30
+                upper = np.pi / 6 if self.airfoil[1] == "radians" else 30
+                airfoil = (
+                    self.airfoil_cl.set_discrete(lower, upper, 50, mutate_self=False),
+                    self.airfoil[1],
+                )
+            else:
+                airfoil = (self.airfoil_cl, self.airfoil[1])
+        else:
+            airfoil = None
         data = {
             "angular_position": self.angular_position,
             "root_chord": self.root_chord,
             "span": self.span,
             "rocket_radius": self.rocket_radius,
             "cant_angle": self.cant_angle,
-            "airfoil": self.airfoil,
+            "airfoil": airfoil,
             "name": self.name,
         }
 
-        if include_outputs:
+        if kwargs.get("include_outputs", False):
             data.update(
                 {
                     "cp": self.cp,

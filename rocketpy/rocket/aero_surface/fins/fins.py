@@ -138,7 +138,7 @@ class Fins(_BaseFin):
             root_chord=root_chord,
             span=span,
             airfoil=airfoil,
-            cant_angle=-cant_angle,
+            cant_angle=cant_angle,
         )
 
         # Store values
@@ -200,7 +200,7 @@ class Fins(_BaseFin):
         """
         clf_delta = (
             self.roll_forcing_interference_factor
-            * self.fin_num_correction(self.n)
+            * self.n
             * (self.Yma + self.rocket_radius)
             * self.clalpha_single_fin
             / self.reference_length
@@ -210,7 +210,7 @@ class Fins(_BaseFin):
         clf_delta.set_title(
             "Roll moment forcing coefficient derivative vs. Mach number"
         )
-        cld_omega = -(
+        cld_omega = (
             2
             * self.roll_damping_interference_factor
             * self.n
@@ -308,7 +308,7 @@ class Fins(_BaseFin):
             * omega[2]
             / 2
         )
-        M3 = M3_forcing + M3_damping
+        M3 = M3_forcing - M3_damping
         return R1, R2, R3, M1, M2, M3
 
     def to_dict(self, **kwargs):

@@ -387,6 +387,42 @@ def test_calisto_finset_vs_four_individual_fins_close():
     np.testing.assert_allclose(clalpha_individual_corrected, clalpha_finset)
 
 
+def test_individual_fin_roll_damping_not_double_counted():
+    """Regression: roll damping for an individual fin must come solely from the
+    roll-rate velocity that the Flight loop injects into the local stream
+    velocity (``w ^ cp`` at the off-axis center of pressure), captured by the
+    ``cp ^ R`` moment. An extra explicit ``cld_omega * omega3`` term used to be
+    added on top, double-counting the damping. The roll moment must therefore be
+    invariant to the explicit ``omega`` argument for a fixed stream velocity, and
+    must still respond to a tangential (roll-induced) stream component."""
+    fin = TrapezoidalFin(
+        angular_position=0,  # fin located at +y, so its CP is off the roll axis
+        root_chord=0.12,
+        tip_chord=0.04,
+        span=0.10,
+        rocket_radius=0.0635,
+        cant_angle=0,
+    )
+    cp = Vector([0.0, 0.0635, -1.0])
+    axial_stream = Vector([0.0, 0.0, 30.0])
+    tangential_stream = Vector([3.0, 0.0, 30.0])  # +x mimics roll-induced flow
+
+    def roll_moment(stream, omega3):
+        return fin.compute_forces_and_moments(
+            stream, abs(stream), 0.1, 1.2, cp, (0.0, 0.0, omega3)
+        )[5]
+
+    # The explicit omega argument must not add a separate damping term.
+    m_omega_0 = roll_moment(tangential_stream, 0.0)
+    m_omega_50 = roll_moment(tangential_stream, 50.0)
+    np.testing.assert_allclose(m_omega_0, m_omega_50, atol=1e-12)
+
+    # Damping is still produced: a tangential (roll-induced) stream component
+    # changes the roll moment relative to purely axial flow.
+    m_axial = roll_moment(axial_stream, 0.0)
+    assert abs(m_omega_0 - m_axial) > 1e-6
+
+
 @pytest.mark.parametrize(
     "position_input",
     [

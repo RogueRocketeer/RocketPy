@@ -3,11 +3,77 @@
 import numpy as np
 import pytest
 
+from rocketpy.rocket.aero_surface.fins import TrapezoidalFin, TrapezoidalFins
 from rocketpy.rocket.aero_surface.fins._geometry import (
     _EllipticalGeometry,
     _FreeFormGeometry,
     _TrapezoidalGeometry,
 )
+
+
+def _make_trapezoidal_fins(cant_angle=0, n=4):
+    return TrapezoidalFins(
+        n=n,
+        root_chord=0.12,
+        tip_chord=0.04,
+        span=0.10,
+        rocket_radius=0.0635,
+        cant_angle=cant_angle,
+    )
+
+
+@pytest.mark.parametrize("cant", [3, -5, 0.5])
+def test_plural_fins_cant_angle_not_negated(cant):
+    """Regression: ``Fins.__init__`` used to store ``cant_angle`` negated, which
+    inverted the public attribute and flipped the cant-driven roll direction."""
+    fins = _make_trapezoidal_fins(cant_angle=cant)
+    assert fins.cant_angle == cant
+    np.testing.assert_allclose(fins.cant_angle_rad, np.radians(cant))
+
+
+def test_plural_fins_cant_roundtrip():
+    """``to_dict``/``from_dict`` must preserve the cant sign (it was double-
+    negated, so a save/load cycle flipped the physical cant)."""
+    fins = _make_trapezoidal_fins(cant_angle=5)
+    restored = TrapezoidalFins.from_dict(fins.to_dict())
+    assert restored.cant_angle == fins.cant_angle
+    np.testing.assert_allclose(restored.cant_angle_rad, fins.cant_angle_rad)
+
+
+def test_plural_fins_cant_setter_getter_consistency():
+    """Building with ``cant_angle=x`` and assigning ``cant_angle = x`` must yield
+    the same internal radian representation (constructor used to negate, setter
+    did not)."""
+    built = _make_trapezoidal_fins(cant_angle=5)
+    reset = _make_trapezoidal_fins(cant_angle=0)
+    reset.cant_angle = 5
+    np.testing.assert_allclose(built.cant_angle_rad, reset.cant_angle_rad)
+
+
+def test_singular_and_plural_cant_sign_parity():
+    """A single ``Fin`` and a plural ``Fins`` built with the same cant must agree
+    in ``cant_angle_rad`` (they diverged in sign when ``Fins`` negated it)."""
+    plural = _make_trapezoidal_fins(cant_angle=5)
+    single = TrapezoidalFin(
+        angular_position=0,
+        root_chord=0.12,
+        tip_chord=0.04,
+        span=0.10,
+        rocket_radius=0.0635,
+        cant_angle=5,
+    )
+    np.testing.assert_allclose(plural.cant_angle_rad, single.cant_angle_rad)
+
+
+def test_plural_fins_roll_forcing_scales_with_n():
+    """The roll forcing coefficient derivative must scale linearly with ``n``
+    (regression: it was changed to scale with ``fin_num_correction(n)``, which
+    ~halved the cant-driven roll authority for a 4-fin set)."""
+    fins4 = _make_trapezoidal_fins(cant_angle=2, n=4)
+    fins8 = _make_trapezoidal_fins(cant_angle=2, n=8)
+    clf4 = fins4.roll_parameters[0].get_value_opt(0.3)
+    clf8 = fins8.roll_parameters[0].get_value_opt(0.3)
+    np.testing.assert_allclose(clf8 / clf4, 8 / 4, rtol=1e-6)
 
 
 def test_trapezoidal_geometry_evaluate_geometrical_parameters(

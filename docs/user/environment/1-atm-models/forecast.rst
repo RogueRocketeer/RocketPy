@@ -16,6 +16,13 @@ Other generic forecasts can also be imported.
     If you want to simulate your rocket launch using past data, you should use \
     :ref:`reanalysis` or :ref:`soundings`.
 
+.. tip::
+
+    The models on this page are fetched over OPeNDAP, which requires the
+    ``netCDF4`` library and can be slow. For a lighter alternative that serves
+    the same kind of pressure-level forecast as plain JSON, see
+    :ref:`open_meteo`.
+
 
 .. _global-forecast-system:
 
@@ -173,14 +180,14 @@ hourly updates. It is generally best for day-of-launch weather assessment and
 rapidly changing local conditions.
 
 RocketPy supports HRRR through a dedicated THREDDS shortcut.
-Like NAM and RAP, HRRR is a regional model over North America.
+Like NAM and RAP, HRRR is a regional model over North America, so you need to
+specify latitude and longitude points within its coverage area. The same
+SpacePort America coordinates used above will be reused here.
 
-If you have a HIRESW-compatible dataset from another provider (or a local copy),
-you can still load it explicitly by passing the path/URL in ``file`` and an
-appropriate mapping in ``dictionary``.
+.. code-block:: python
 
     env_hrrr = Environment(
-        date=now_plus_twelve,
+        date=tomorrow,
         latitude=32.988528,
         longitude=-106.975056,
     )

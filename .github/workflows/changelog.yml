@@ -1,12 +1,21 @@
 name: Populate Changelog
 on:
-  pull_request:
+  # `pull_request_target`, not `pull_request`. Secrets are withheld from a
+  # `pull_request` run whose head is a fork, so RELEASE_TOKEN arrived empty and
+  # the checkout below failed for every outside contribution.
+  #
+  # Nothing from the pull request is executed. The checkout is `ref: develop`,
+  # and the updater is inline below, which under this trigger is read from the
+  # default branch rather than from the merged head.
+  pull_request_target:
     types: [closed]
     branches:
       - develop
 
+# Read, because the job's own writes go through RELEASE_TOKEN. This trigger runs
+# with secrets available, so GITHUB_TOKEN should not also carry write.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   Changelog:
@@ -15,48 +24,59 @@ jobs:
 
     steps:
       - name: Clone RocketPy
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
         with:
           repository: RocketPy-Team/RocketPy
           ref: develop
           token: ${{ secrets.RELEASE_TOKEN }}
+          # Full history so the retry loop below can rebase onto the latest
+          # develop when another merge lands while this job runs.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip "google-genai>=1.0.0"
 
       - name: Update Changelog
         env:
+          # PR title/body are untrusted input, so they are passed via the
+          # environment and consumed inside Python (never interpolated into the
+          # shell). The script asks Gemini to format and place the entry, then
+          # validates the result; if the key is missing or the model output is
+          # rejected, it falls back to a safe deterministic insert.
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: |
-          SECTION="### Added"
-          PREFIX="ENH"
-
-          if [[ "$PR_LABELS" == *"Bug"* ]]; then
-            SECTION="### Fixed"
-            PREFIX="BUG"
-          elif [[ "$PR_LABELS" == *"Refactor"* ]]; then
-            SECTION="### Changed"
-            PREFIX="MNT"
-          elif [[ "$PR_LABELS" == *"Docs"* ]] && [[ "$PR_LABELS" == *"Git housekeeping"* ]]; then
-            SECTION="### Changed"
-            PREFIX="DOC"
-          elif [[ "$PR_LABELS" == *"Tests"* ]]; then
-            SECTION="### Changed"
-            PREFIX="TST"
-          elif [[ "$PR_LABELS" == *"Docs"* ]]; then
-            # Only documentation -> Added section
-            SECTION="### Added"
-            PREFIX="DOC"
-          fi
-
-          ENTRY="- $PREFIX: $PR_TITLE [#$PR_NUMBER](https://github.com/RocketPy-Team/RocketPy/pull/$PR_NUMBER)"
-          SECTION_LINE=$(grep -n "^$SECTION$" CHANGELOG.md | head -1 | cut -d: -f1)
-
-          sed -i "$((SECTION_LINE + 1))a\\$ENTRY" CHANGELOG.md
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python .github/scripts/update_changelog.py
 
       - name: Push Changes
         run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged (duplicate or no-op) — nothing to commit."
+            exit 0
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
-          git commit -m "DOC: Update Changelog for PR #${{ github.event.pull_request.number }}"
-          git push
+          git commit -m "DOC: update changelog for PR #${{ github.event.pull_request.number }}"
+
+          # Survive races: if another PR merged into develop after our checkout,
+          # the first push is rejected (non-fast-forward). Rebase and retry.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:develop; then
+              echo "Pushed changelog update on attempt ${attempt}."
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); rebasing onto latest develop..."
+            git pull --rebase origin develop
+          done
+
+          echo "::error::Failed to push changelog update after 5 attempts."
+          exit 1
